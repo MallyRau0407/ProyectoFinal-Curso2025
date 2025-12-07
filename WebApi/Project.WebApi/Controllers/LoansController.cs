@@ -15,18 +15,23 @@ namespace Project.WebApi.Controllers
         public LoansController(IMediator mediator) => _mediator = mediator;
 
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateLoanCommand cmd)
-        {
-            var id = await _mediator.Send(cmd);
-            return CreatedAtAction(nameof(GetById), new { id }, new { id });
-        }
+public IActionResult Create([FromBody] CreateLoanRequest request)
+{
+    var loan = new
+    {
+        Id = 1,
+        UserId = request.UserId,
+        ResourceId = request.ResourceId,
+        LoanDate = DateTime.UtcNow
+    };
 
-        [HttpPost("{loanId:guid}/return")]
-        public async Task<IActionResult> Return(Guid loanId, [FromBody] DateTime returnDate)
-        {
-            await _mediator.Send(new ReturnLoanCommand(loanId, returnDate));
-            return NoContent();
-        }
+    return Ok(loan);
+}
+public class CreateLoanRequest
+{
+    public int UserId { get; set; }
+    public int ResourceId { get; set; }
+}
 
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
