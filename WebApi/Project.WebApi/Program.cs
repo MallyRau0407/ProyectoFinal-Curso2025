@@ -1,73 +1,154 @@
-using Project.WebApi;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Prometheus;
-
+using Project.WebApi;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// =====================
+// Controllers & Swagger
+// =====================
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-// Health Checks
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Project.WebApi",
+        Version = "v1"
+    });
+
+    // JWT en Swagger
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Ingresa el token JWT así: Bearer {tu_token}"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// ============
+// HealthCheck
+// ============
 builder.Services.AddHealthChecks();
+
+// ==============
+// Custom services
+// ==============
 builder.Services.AddServices();
+
+// ===================
+// JWT CONFIGURACIÓN
+// ===================
+var issuer = builder.Configuration["Jwt:Issuer"];
+var audience = builder.Configuration["Jwt:Audience"];
+var jwtKey = builder.Configuration["Jwt:Key"];
+
+// 🔴 Validaciones críticas
+if (string.IsNullOrWhiteSpace(issuer))
+    throw new Exception("JWT Issuer no configurado");
+if (string.IsNullOrWhiteSpace(audience))
+    throw new Exception("JWT Audience no configurado");
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new Exception("JWT Key no configurada");
+
+// Autenticación JWT
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false; // true en producción
+    options.SaveToken = true;
+
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = issuer,
+        ValidAudience = audience,
+
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtKey)
+        ),
+
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// =======
+// Swagger
+// =======
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
-
-// Middleware de Prometheus para métricas HTTP (latencia, status codes, etc.)
+// =========
+// Prometheus
+// =========
 app.UseHttpMetrics();
 
+// =====================
+// Seguridad (ORDEN VITAL)
+// =====================
+app.UseAuthentication();
 app.UseAuthorization();
 
-// ---- ENDPOINTS EXTRA ----
-
-// 1) /env -> ver entorno
+// =================
+// Endpoints extra
+// =================
 app.MapGet("/api/env", (IHostEnvironment env) =>
 {
     return Results.Ok(new
     {
-        environment = env.EnvironmentName,  // Development, Staging, Production, etc.
+        environment = env.EnvironmentName,
         application = env.ApplicationName
     });
 });
 
-// 2) /version -> lee el archivo VERSION del output
 app.MapGet("/api/version", () =>
 {
-    var versionFilePath = Path.Combine(AppContext.BaseDirectory, "VERSION");
+    var path = Path.Combine(AppContext.BaseDirectory, "VERSION");
 
-    if (!File.Exists(versionFilePath))
-    {
-        return Results.NotFound(new
-        {
-            error = "VERSION file not found",
-            path = versionFilePath
-        });
-    }
-
-    var version = File.ReadAllText(versionFilePath).Trim();
-    return Results.Ok(new { version });
+    return File.Exists(path)
+        ? Results.Ok(new { version = File.ReadAllText(path).Trim() })
+        : Results.NotFound(new { error = "VERSION file not found" });
 });
 
-// 3) /health -> healthcheck básico
 app.MapHealthChecks("/api/health");
-
-// 4) /metrics -> endpoint de Prometheus
 app.MapMetrics("/api/metrics");
 
-// Controllers existentes
+// ===========
+// Controllers
+// ===========
 app.MapControllers();
 
 app.Run();

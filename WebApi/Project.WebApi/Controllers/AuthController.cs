@@ -1,58 +1,47 @@
 using Microsoft.AspNetCore.Mvc;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using Project.WebApi.Models.Auth;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace Project.WebApi.Controllers;
 
 [ApiController]
-[Route("api/auth")]
+[Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly IConfiguration _configuration;
+    private readonly IConfiguration _config;
 
-    public AuthController(IConfiguration configuration)
+    public AuthController(IConfiguration config)
     {
-        _configuration = configuration;
-    }
-
-    [HttpPost("register")]
-    public async Task<IActionResult> Register(RegisterRequest request)
-    {
-        var cs = _configuration.GetConnectionString("ProjectDatabase");
-
-        using var connection = new SqlConnection(cs);
-
-        var sql = @"
-            INSERT INTO Users (UserName, FullName)
-            VALUES (@UserName, @FullName)";
-
-        await connection.ExecuteAsync(sql, request);
-
-        return Ok(new { message = "Usuario registrado correctamente ✅" });
+        _config = config;
     }
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login(RegisterRequest request)
+    public IActionResult Login()
     {
-        var cs = _configuration.GetConnectionString("ProjectDatabase");
+        // ⚠️ Esto después lo cambias por validación real en BD
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, "testuser"),
+            new Claim(ClaimTypes.Role, "Admin")
+        };
 
-        using var connection = new SqlConnection(cs);
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_config["Jwt:Key"]!)
+        );
 
-        var user = await connection.QueryFirstOrDefaultAsync(@"
-            SELECT UserName, FullName
-            FROM Users
-            WHERE UserName = @UserName",
-        new { request.UserName });
-
-        if (user is null)
-            return Unauthorized("Usuario no existe");
+        var token = new JwtSecurityToken(
+            issuer: _config["Jwt:Issuer"],
+            audience: _config["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(30),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+        );
 
         return Ok(new
         {
-            message = "Login correcto ✅",
-            user
+            access_token = new JwtSecurityTokenHandler().WriteToken(token)
         });
     }
-
 }
