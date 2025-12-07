@@ -17,7 +17,7 @@ namespace Project.Infrastructure.Data
         public IDbConnection GetConnection()
         {
             return new SqlConnection(
-                _configuration.GetConnectionString("DefaultConnection")
+                _configuration.GetConnectionString("ProjectDatabase")
             );
         }
     }

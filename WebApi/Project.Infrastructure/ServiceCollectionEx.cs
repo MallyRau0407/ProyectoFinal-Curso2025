@@ -1,8 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Project.Domain.IRepositories;
-using Project.Infrastructure.DataSources.SqlDB;
-using Project.Infrastructure.DataSources.SqlDB.Implementations;
+using Project.Infrastructure.Data;
 using Project.Infrastructure.Repositories;
 
 namespace Project.Infrastructure
